@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Student Q&A Assistant</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: Arial, "Noto Sans KR", sans-serif;
+      background: linear-gradient(135deg,#eef4ff,#f8fbff); color:#1f2937;
+      min-height:100vh; display:flex; align-items:center; justify-content:center;
+      padding:28px;
+    }
+    .wrap { width:min(920px,100%); }
+    .header { text-align:center; margin-bottom:22px; }
+    .header h1 { margin:0 0 8px; font-size:32px; }
+    .header p { margin:0; color:#64748b; }
+    .card {
+      background:#fff; border-radius:22px; padding:28px;
+      box-shadow:0 18px 55px rgba(30,64,175,.12);
+    }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    label { display:block; font-weight:700; margin-bottom:7px; font-size:14px; }
+    input, select, textarea {
+      width:100%; border:1px solid #dbe3ef; border-radius:12px;
+      padding:13px 14px; font-size:15px; outline:none; background:#fbfdff;
+    }
+    input:focus, select:focus, textarea:focus { border-color:#4f7cff; }
+    textarea { min-height:145px; resize:vertical; }
+    .full { grid-column:1/-1; }
+    button {
+      width:100%; margin-top:18px; border:0; border-radius:13px;
+      padding:14px 18px; background:#315efb; color:white;
+      font-size:16px; font-weight:700; cursor:pointer;
+    }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .answer {
+      display:none; margin-top:22px; padding:20px; border-radius:16px;
+      background:#f3f7ff; border:1px solid #d9e5ff;
+    }
+    .answer h3 { margin:0 0 10px; }
+    .answerText { white-space:pre-wrap; line-height:1.7; }
+    .meta { margin-top:12px; color:#64748b; font-size:13px; }
+    .status { text-align:center; margin-top:12px; color:#64748b; min-height:20px; }
+    @media(max-width:650px){ .grid{grid-template-columns:1fr;} .full{grid-column:auto;} }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>🎓 Student Q&A Assistant</h1>
+    <p>학생 질문 자동 답변 시스템 · AI Student Support</p>
+  </div>
+
+  <div class="card">
+    <form id="qnaForm">
+      <div class="grid">
+        <div>
+          <label for="name">이름 / Name</label>
+          <input id="name" required placeholder="이름을 입력하세요" />
+        </div>
+        <div>
+          <label for="studentId">학번 / Student ID</label>
+          <input id="studentId" required placeholder="예: 202580261" />
+        </div>
+        <div>
+          <label for="email">이메일 / Email</label>
+          <input id="email" type="email" required placeholder="student@example.com" />
+        </div>
+        <div>
+          <label for="language">답변 언어 / Language</label>
+          <select id="language">
+            <option value="Korean">한국어</option>
+            <option value="Chinese">中文</option>
+            <option value="English">English</option>
+          </select>
+        </div>
+        <div class="full">
+          <label for="question">질문 / Question</label>
+          <textarea id="question" required placeholder="예: 졸업 요건은 무엇인가요?"></textarea>
+        </div>
+      </div>
+      <button id="submitBtn" type="submit">AI에게 질문하기</button>
+      <div class="status" id="status"></div>
+    </form>
+
+    <div class="answer" id="answerBox">
+      <h3>🤖 AI 답변</h3>
+      <div class="answerText" id="answerText"></div>
+      <div class="meta" id="answerMeta"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // n8n에서 Webhook 노드를 열고 Production URL을 복사한 뒤 아래 값만 바꾸세요.
+  const N8N_WEBHOOK_URL = "PASTE_YOUR_N8N_PRODUCTION_WEBHOOK_URL_HERE";
+
+  const form = document.getElementById("qnaForm");
+  const button = document.getElementById("submitBtn");
+  const status = document.getElementById("status");
+  const answerBox = document.getElementById("answerBox");
+  const answerText = document.getElementById("answerText");
+  const answerMeta = document.getElementById("answerMeta");
+
+  function koreanReplyOnly(raw) {
+    if (!raw) return "답변을 받지 못했습니다.";
+    const marker = "韩语回复：";
+    const i = raw.indexOf(marker);
+    return i >= 0 ? raw.slice(i + marker.length).trim() : raw;
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    if (N8N_WEBHOOK_URL.includes("PASTE_YOUR")) {
+      alert("먼저 index.html의 N8N_WEBHOOK_URL에 n8n Production URL을 입력하세요.");
+      return;
+    }
+
+    const payload = {
+      name: document.getElementById("name").value.trim(),
+      studentId: document.getElementById("studentId").value.trim(),
+      email: document.getElementById("email").value.trim(),
+      language: document.getElementById("language").value,
+      question: document.getElementById("question").value.trim()
+    };
+
+    button.disabled = true;
+    status.textContent = "AI가 질문을 분석하고 있습니다...";
+    answerBox.style.display = "none";
+
+    try {
+      const res = await fetch(N8N_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+
+      answerText.textContent = koreanReplyOnly(data.answer);
+      answerMeta.textContent =
+        `분류: ${data.category || "-"} · 처리: ${data.handling || "-"} · 우선순위: ${data.priority || "-"}`;
+      answerBox.style.display = "block";
+      status.textContent = "답변이 완료되었습니다.";
+    } catch (err) {
+      status.textContent = "연결 오류가 발생했습니다. n8n Webhook URL과 Workflow 활성화 상태를 확인하세요.";
+      console.error(err);
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
